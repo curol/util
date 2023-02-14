@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+#**************************************
+# packages
+#
+# Library for installing common packages.
+#**************************************
+
+install_debian_packages(){
+    # Ensure apt is in non-interactive to avoid prompts
+    export DEBIAN_FRONTEND=noninteractive
+
+    local package_list="apt-utils \
+        openssh-client \
+        gnupg2 \
+        dirmngr \
+        iproute2 \
+        procps \
+        lsof \
+        htop \
+        net-tools \
+        psmisc \
+        curl \
+        tree \
+        wget \
+        rsync \
+        ca-certificates \
+        unzip \
+        bzip2 \
+        zip \
+        nano \
+        vim-tiny \
+        less \
+        jq \
+        lsb-release \
+        apt-transport-https \
+        dialog \
+        libc6 \
+        libgcc1 \
+        libkrb5-3 \
+        libgssapi-krb5-2 \
+        libicu[0-9][0-9] \
+        liblttng-ust[0-9] \
+        libstdc++6 \
+        zlib1g \
+        locales \
+        sudo \
+        ncdu \
+        man-db \
+        strace \
+        manpages \
+        manpages-dev \
+        bat \
+        ripgrep \
+        fzf \
+        make \
+        build-essential \
+        zsh \
+        fd-find \
+        init-system-helpers"
+
+    apt-get install -y --no-install-recommends $package_list
+
+    apt-get -y upgrade --no-install-recommends
+    apt-get autoremove -y
+
+        # Ensure at least the en_US.UTF-8 UTF-8 locale is available = common need for both applications and things like the agnoster ZSH theme.
+    if [ "${LOCALE_ALREADY_SET}" != "true" ] && ! grep -o -E '^\s*en_US.UTF-8\s+UTF-8' /etc/locale.gen > /dev/null; then
+        echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen 
+        locale-gen
+        LOCALE_ALREADY_SET="true"
+    fi
+}
+
+install_dotfiles(){
+    echo "installing dotfiles..."
+    if [ -z "$DOTFILES" ]; then
+        echo "\$DOTFILES is empty. Not installing dotfiles."
+    else
+        if [ -z "$DOTFILES_SCRIPT" ]; then
+            echo "\$DOTFILES_SCRIPT is empty. Not installing dotfiles."
+        else
+            su -l $USERNAME /bin/zsh -c "git clone $DOTFILES dotfiles"
+            su -l $USERNAME /bin/zsh -c "dotfiles/$DOTFILES_SCRIPT"
+        fi
+    fi
+}
+
+# Powerline fonts: https://github.com/powerline/fonts
+# Installing a font is just copying its file to specific font directory.
+# ubuntu: sudo apt-get install fonts-powerline
+# fedora/redhat: sudo dnf install powerline-fonts
+# Or, clone repository
+install_powerline_fonts(){
+    # clone
+    git clone https://github.com/powerline/fonts.git --depth=1
+    # install
+    cd fonts
+    ./install.sh
+    # clean-up a bit
+    cd ..
+    rm -rf fonts
+}
+
+# This method only works on Linux. It’s the second recommended method if terminal emulator supports it as patching fonts is not needed, and it generally works with any coding font.
+# Valid font paths can be listed with xset q
+# https://powerline.readthedocs.io/en/latest/installation/linux.html#fonts-installation
+install_powerline_fonts_2(){
+    # download symbols
+    wget https://github.com/powerline/powerline/raw/develop/font/PowerlineSymbols.otf
+    wget https://github.com/powerline/powerline/raw/develop/font/10-powerline-symbols.conf
+    # mv to font path
+    mv PowerlineSymbols.otf ~/.local/share/fonts/
+    # update font cache
+    fc-cache -vf ~/.local/share/fonts/
+    # install font config file
+    mv 10-powerline-symbols.conf ~/.config/fontconfig/conf.d/
+}
+
+# Install docker
+install_docker(){
+    echo "installing docker..."
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    # Add user to docker group
+    # sudo groupadd docker
+    sudo usermod -aG docker $USERNAME
+}
+
+
+# Install github cli using the package manager apt
+# mac: https://github.com/cli/cli#macos
+# linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+install_github_cli(){
+    type -p curl >/dev/null || sudo apt install curl -y
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && sudo apt update \
+    && sudo apt install gh -y
+}
+
+# Install neovim
+install_neovim(){
+    # Install neovim
+    echo "installing neovim..."
+    mkdir -p /neovim && cd /neovim \
+    && wget https://github.com/neovim/neovim/releases/download/stable/nvim.appimage \
+    && chmod u+x nvim.appimage \
+    && ./nvim.appimage --appimage-extract \
+    && ln -s "/neovim/squashfs-root/usr/bin/nvim" "/usr/local/bin/nvim" 
+}
+
+install_bat_extras(){
+    local XDG_DATA_HOME=/home/$USERNAME/.local/share
+    local XDG_BIN_HOME=/home/$USERNAME/.local/bin
+    git clone https://github.com/eth-p/bat-extras $XDG_DATA_HOME/bat-extras
+    $XDG_DATA_HOME/bat-extras/build.sh --install > /dev/null 2>&1
+
+    # Link bin to local bin
+    # fd --type f --hidden --no-ignore --full-path --absolute-path  --max-depth 2 'bin' -x ln -s '{}' $XDG_BIN_HOME/'{/}'
+}
+
+install_node(){
+    local NODE_VER-SION=18
+    # Install node and enable corepack
+    # curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | sudo bash -
+    apt-get update
+    apt-get install -y nodejs
+}
+
+init_node(){
+    npm config set prefix '~/.npm-global'
+    export PATH=~/.npm-global/bin >> ~/.exports
+}
+
+# Install nvm and node
+install_nvm_and_node(){
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | zsh 
+    nvm install --lts
+    nvm use node
+}
+
+# Install node and enable corepack
+install_node_and_enable_corepack_and_pnpm(){
+    local PNPM_VER=latest
+    local PNPM_STORE_DIR="$HOME/.local/share/pnpm/store"
+
+    install_node
+
+    corepack enable
+    # Enable corepack and install pnpm
+    su -l $USERNAME -c "corepack prepare pnpm@$PNPM_VER --activate"
+    su -l $USERNAME -c 'pnpm setup'
+    # su $USERNAME -s /usr/bin/zsh -c 'pnpm setup'
+}

@@ -1,0 +1,21 @@
+#!/bin/bash
+#**************************************************
+# util
+# Utility scripts for misc tasks. 
+#
+# I.g.,
+# A=100 ./util helpers test_echo_env
+# # echo 100
+#**************************************************
+
+set -e
+
+BASEDIR=$(dirname "$0") # get path of script
+_name=$1 # get first arg for name of script to call
+shift # remove arg $1 from $@
+
+# Get script
+source $BASEDIR/scripts/$_name
+
+# Call function with args
+$@

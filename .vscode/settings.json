@@ -1,0 +1,8 @@
+{
+  //   "editor.defaultFormatter": "EditorConfig.EditorConfig",
+  "editor.formatOnSave": true,
+  "search.searchEditor.doubleClickBehaviour": "goToLocation",
+  "terminal.integrated.fontSize": 16,
+  "explorer.incrementalNaming": "smart",
+  "terminal.integrated.fontFamily": "MesloLGS NF"
+}

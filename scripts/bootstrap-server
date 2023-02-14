@@ -1,0 +1,467 @@
+#!/bin/bash
+#**************************************
+# bootstrap-server
+#
+# Opinionated script for bootstrapping a debian/ubuntu server for a dev environment.
+# Script must be run as root.
+#
+# ## Getting started
+#
+# 1. Install packages wget and curl:
+#   apt-get update -y && apt-get upgrade -y && apt-get install -y curl wget
+#
+# 2. Run script `bootstrap-server`.
+#
+# ## Examples
+#
+# I.g., install with curl:
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/curol/util/main/scripts/bootstrap-server)"
+#
+# I.g., install with curl and with environment vars:
+#   bash -c "GIT_USERNAME=YOUR_GIT_USERNAME GIT_EMAIL=YOUR_GIT_EMAIL; $(curl -fsSL https://raw.githubusercontent.com/curol/util/main/scripts/bootstrap-server)"
+#
+# I.g., install with cli:
+#   ./scripts/bootstrap-server
+#**************************************
+
+set -e
+
+###########################
+# Environment
+###########################
+# Packages
+UPGRADE_PACKAGES="${UPGRADEPACKAGES:-"true"}"
+# ZSH
+INSTALL_ZSH="${INSTALLZSH:-"true"}"
+# ROOT
+COPY_ROOT_SSH="${COPY_ROOT_SSH:-"true"}"
+# User
+USERNAME="${USERNAME:-"dev"}"
+USER_UID="${USERUID:-1000}"
+USER_GID="${USERGID:-1000}"
+USER_PASSWORD="${USER_PASSWORD:-"password"}"
+USER_HOME="/home/${USERNAME}"
+# Dotfiles
+DOTFILES=https://github.com/curol/dotfiles
+DOTFILES_SCRIPT=install.sh
+# Git
+GIT_USERNAME="${GIT_USERNAME:-""}"
+GIT_EMAIL="${GIT_EMAIL:-""}"
+
+###########################
+# Root
+###########################
+
+# TODO: Print env
+# print_env(){
+#     echo "$USERNAME"
+# }
+
+# For linux (apt: Debian, Ubuntu Linux, Raspberry Pi OS), on first startup upgrade packages
+init_debian_first_boot() {
+    apt-get update && apt-get upgrade
+}
+
+# Install github cli using the package manager apt
+# mac: https://github.com/cli/cli#macos
+# linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+install_github_cli() {
+    type -p curl >/dev/null || sudo apt install curl -y
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg &&
+        sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg &&
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null &&
+        sudo apt update &&
+        sudo apt install gh -y
+}
+
+# Install neovim
+install_neovim() {
+    local neovim_path=/usr/local/share/neovim
+
+    mkdir -p ${neovim_path}
+    cd ${neovim_path}
+
+    wget https://github.com/neovim/neovim/releases/download/stable/nvim.appimage &&
+        chmod u+x nvim.appimage &&
+        ./nvim.appimage --appimage-extract &&
+        ln -s "${neovim_path}/squashfs-root/usr/bin/nvim" "/usr/local/bin/nvim"
+}
+
+# Debian / Ubuntu packages
+install_debian_packages() {
+    # Ensure apt is in non-interactive to avoid prompts
+    export DEBIAN_FRONTEND=noninteractive
+
+    local package_list="apt-utils \
+        openssh-client \
+        gnupg2 \
+        dirmngr \
+        iproute2 \
+        procps \
+        lsof \
+        htop \
+        net-tools \
+        psmisc \
+        curl \
+        tree \
+        wget \
+        rsync \
+        ca-certificates \
+        unzip \
+        bzip2 \
+        zip \
+        nano \
+        vim-tiny \
+        less \
+        jq \
+        lsb-release \
+        apt-transport-https \
+        dialog \
+        libc6 \
+        libgcc1 \
+        libkrb5-3 \
+        libgssapi-krb5-2 \
+        libicu[0-9][0-9] \
+        liblttng-ust[0-9] \
+        libstdc++6 \
+        zlib1g \
+        locales \
+        sudo \
+        ncdu \
+        man-db \
+        strace \
+        manpages \
+        manpages-dev \
+        bat \
+        ripgrep \
+        fzf \
+        make \
+        build-essential \
+        fd-find \
+        init-system-helpers"
+
+    # Include libssl1.1 if available
+
+    if [[ ! -z $(apt-cache --names-only search ^libssl1.1$) ]]; then
+        package_list="${package_list} libssl1.1"
+    fi
+
+    # Include libssl3 if available
+    if [[ ! -z $(apt-cache --names-only search ^libssl3$) ]]; then
+        package_list="${package_list} libssl3"
+    fi
+
+    # Include appropriate version of libssl1.0.x if available
+    local libssl_package=$(dpkg-query -f '${db:Status-Abbrev}\t${binary:Package}\n' -W 'libssl1\.0\.?' 2>&1 || echo '')
+    if [ "$(echo "$libssl_package" | grep -o 'libssl1\.0\.[0-9]:' | uniq | sort | wc -l)" -eq 0 ]; then
+        if [[ ! -z $(apt-cache --names-only search ^libssl1.0.2$) ]]; then
+            # Debian 9
+            package_list="${package_list} libssl1.0.2"
+        elif [[ ! -z $(apt-cache --names-only search ^libssl1.0.0$) ]]; then
+            # Ubuntu 18.04
+            package_list="${package_list} libssl1.0.0"
+        fi
+    fi
+
+    # Include git if not already installed (may be more recent than distro version)
+    if ! type git >/dev/null 2>&1; then
+        package_list="${package_list} git"
+    fi
+
+    # Install the list of packages
+    echo "Packages to verify are installed: ${package_list}"
+    # rm -rf /var/lib/apt/lists/*
+    apt-get update -y
+    apt-get -y install --no-install-recommends ${package_list} 2> >(grep -v 'debconf: delaying package configuration, since apt-utils is not installed' >&2)
+
+    # link fd
+    ln -s $(which fdfind) /usr/bin/fd
+
+    # Install zsh (and recommended packages) if needed
+    if [ "${INSTALL_ZSH}" = "true" ] && ! type zsh >/dev/null 2>&1; then
+        apt-get install -y zsh
+    fi
+
+    # Get to latest versions of all packages
+    if [ "${UPGRADE_PACKAGES}" = "true" ]; then
+        apt-get -y upgrade --no-install-recommends
+        apt-get autoremove -y
+    fi
+
+    # Ensure at least the en_US.UTF-8 UTF-8 locale is available = common need for both applications and things like the agnoster ZSH theme.
+    if [ "${LOCALE_ALREADY_SET}" != "true" ] && ! grep -o -E '^\s*en_US.UTF-8\s+UTF-8' /etc/locale.gen >/dev/null; then
+        echo "en_US.UTF-8 UTF-8" >>/etc/locale.gen
+        locale-gen
+        LOCALE_ALREADY_SET="true"
+    fi
+
+    install_github_cli
+
+    install_neovim
+}
+
+install_packages() {
+    CONFIGURE_ZSH_AS_DEFAULT_SHELL="${CONFIGUREZSHASDEFAULTSHELL:-"true"}"
+    INSTALL_OH_MY_ZSH="${INSTALLOHMYZSH:-"true"}"
+
+    # Ensure that login shells get the correct path if the user updated the PATH using ENV.
+    # rm -f /etc/profile.d/00-restore-env.sh
+    # echo "export PATH=${PATH//$(sh -lc 'echo $PATH')/\$PATH}" > /etc/profile.d/00-restore-env.sh
+    # chmod +x /etc/profile.d/00-restore-env.sh
+
+    # Bring in ID, ID_LIKE, VERSION_ID, VERSION_CODENAME
+    . /etc/os-release
+    # Get an adjusted ID independent of distro variants
+    if [ "${ID}" = "debian" ] || [ "${ID_LIKE}" = "debian" ]; then
+        ADJUSTED_ID="debian"
+    elif [[ "${ID}" = "rhel" || "${ID}" = "fedora" || "${ID}" = "mariner" || "${ID_LIKE}" = *"rhel"* || "${ID_LIKE}" = *"fedora"* || "${ID_LIKE}" = *"mariner"* ]]; then
+        ADJUSTED_ID="rhel"
+    elif [ "${ID}" = "alpine" ]; then
+        ADJUSTED_ID="alpine"
+    else
+        echo "Linux distro ${ID} not supported."
+        exit 1
+    fi
+
+    # Install packages for appropriate OS
+    if [ "${PACKAGES_ALREADY_INSTALLED}" != "true" ]; then
+        case "${ADJUSTED_ID}" in
+        "debian")
+            init_debian_first_boot
+            install_debian_packages
+            ;;
+        "rhel")
+            echo "install redhat packages"
+            # install_redhat_packages
+            ;;
+        "alpine")
+            echo "install alpine packages"
+            # install_alpine_packages
+            ;;
+        esac
+        PACKAGES_ALREADY_INSTALLED="true"
+    fi
+}
+
+# Install docker
+# Install docker using the convenience script https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script
+install_docker() {
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    # Add user to docker group
+    # sudo groupadd docker
+    sudo usermod -aG docker $USERNAME
+}
+
+create_new_sudo_user() {
+    # Create group
+    groupadd --gid $USER_GID $USERNAME
+
+    # Create user
+    useradd -s /bin/zsh \
+        --uid $USER_UID \
+        --gid $USER_GID \
+        -p "$(openssl passwd -6 ${USER_PASSWORD})" \
+        -m $USERNAME
+
+    # Sudo user
+    usermod -aG sudo $USERNAME
+
+    # Add add sudo support for non-root user with no password
+    # if [ "${USERNAME}" != "root" ] && [ "${EXISTING_NON_ROOT_USER}" != "${USERNAME}" ]; then
+    #     echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME
+    #     chmod 0440 /etc/sudoers.d/$USERNAME
+    #     EXISTING_NON_ROOT_USER="${USERNAME}"
+    # fi
+}
+
+copy_root_ssh() {
+    if [ "${COPY_ROOT_SSH}" == "true" ]; then
+        # rsync --archive --chown=$USERNAME:$USERNAME ~/.ssh /home/$USERNAME
+
+        # silence stdout and stderr and return 0
+        rsync --archive --chown=$USERNAME:$USERNAME ~/.ssh /home/$USERNAME >/dev/null 2>&1 || true
+    fi
+}
+
+###########################
+# User
+###########################
+init_user() {
+    # Git
+    echo "git config with (1) username - ${GIT_USERNAME} and (2) email - ${GIT_EMAIL}..."
+    git config --global user.name "${GIT_USERNAME}"
+    git config --global user.email "${GIT_EMAIL}"
+    echo "git global config:"
+    echo "---------------------------------------"
+    git config --global --list | cat
+    echo "---------------------------------------"
+
+    # Other
+    # ...
+}
+
+install_dotfiles() {
+    if [ -z "$DOTFILES" ]; then
+        echo "\$DOTFILES is empty. Not installing dotfiles."
+    else
+        if [ -z "$DOTFILES_SCRIPT" ]; then
+            echo "\$DOTFILES_SCRIPT is empty. Not installing dotfiles."
+        else
+            su -l $USERNAME /bin/zsh -c "git clone $DOTFILES dotfiles"
+            su -l $USERNAME /bin/zsh -c "dotfiles/$DOTFILES_SCRIPT"
+        fi
+    fi
+}
+
+# Powerline fonts: https://github.com/powerline/fonts
+# Installing a font is just copying its file to specific font directory.
+# ubuntu: sudo apt-get install fonts-powerline
+# fedora/redhat: sudo dnf install powerline-fonts
+# Or, clone repository
+install_powerline_fonts() {
+    # clone
+    git clone https://github.com/powerline/fonts.git --depth=1
+    # install
+    cd fonts
+    ./install.sh
+    # clean-up a bit
+    cd ..
+    rm -rf fonts
+}
+
+# This method only works on Linux.
+# It’s the second recommended method if terminal emulator supports it as patching fonts is not needed, and it generally works with any coding font.
+# Valid font paths can be listed with xset q
+# https://powerline.readthedocs.io/en/latest/installation/linux.html#fonts-installation
+install_powerline_fonts_2() {
+    # download symbols
+    wget https://github.com/powerline/powerline/raw/develop/font/PowerlineSymbols.otf
+    wget https://github.com/powerline/powerline/raw/develop/font/10-powerline-symbols.conf
+    # mv to font path
+    mv PowerlineSymbols.otf ~/.local/share/fonts/
+    # update font cache
+    fc-cache -vf ~/.local/share/fonts/
+    # install font config file
+    mv 10-powerline-symbols.conf ~/.config/fontconfig/conf.d/
+}
+
+install_bat_extras() {
+    git clone https://github.com/eth-p/bat-extras $XDG_DATA_HOME/bat-extras
+    $XDG_DATA_HOME/bat-extras/build.sh --install >/dev/null 2>&1
+}
+
+###########################
+# Main
+###########################
+# FORMAT AND COLORS
+RED="31"
+GREEN="32"
+BOLDGREEN="\e[1;${GREEN}m"
+ITALICGREEN="\e[3;${GREEN}m"
+ITALICRED="\e[3;${RED}m"
+ENDCOLOR="\e[0m" # Reset all attributes
+
+echo_status() {
+    # The echo command prints out text.
+    # We need to tell it that we're working with special ANSI codes, not just regular characters.
+    # This can be accomplished by adding a \e at the beginning to form an escape sequence.
+    # `\e` = <ESC> character
+    # The escape sequence for specifying color codes is \e[COLORm (COLOR represents our color code in this case).
+    # By default, echo does not support escape sequences.
+    # We need to add the -e option to enable their interpretation.
+
+    local _status=${1}
+
+    # echo $'\n' "_$status"
+    echo -e "$BOLDGREEN" "$_status" "$ENDCOLOR"
+}
+
+print_user() {
+    echo ""
+    echo "----------------USER CONFIG----------------"
+    echo -e "${ITALICGREEN}"
+    echo "USERNAME = ${USERNAME}"
+    echo "HOME = ${HOME}"
+    echo "ID = ${USER_UID}"
+    echo "GID = ${USER_GID}"
+    echo "GIT USERNAME = ${GIT_USERNAME}"
+    echo "GIT EMAIL = ${GIT_EMAIL}"
+    echo "XDG_DATA_HOME = ${XDG_DATA_HOME}"
+    echo "XDG_BIN_HOME = ${XDG_BIN_HOME}"
+    echo -e "${ENDCOLOR}"
+    echo "-------------------------------------------"
+    echo ""
+}
+
+setup_user() {
+    HOME=${USER_HOME}
+    XDG_DATA_HOME=$HOME/.local/share
+    XDG_BIN_HOME=$HOME/.local/bin
+
+    print_user
+
+    echo_status "1.) installing dotfiles..."
+    install_dotfiles
+
+    echo_status "2.) initializing user env..."
+    init_user
+
+    echo_status "3.) installing bat-extras..."
+    install_bat_extras
+
+    echo_status "4.) sync root's ssh to $HOME..."
+    copy_root_ssh
+
+    echo_status "5.) setting $USERNAME as recursive owner to $HOME..."
+    sudo chown -R "$USERNAME":"$USERNAME" "$HOME"
+}
+
+clean() {
+    apt-get autoremove -y &&
+        apt-get clean -y &&
+        rm -rf /var/lib/apt/lists/* /root/.gnupg /tmp/library-scripts
+}
+
+main() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo -e 'Script must be run as root. Use sudo, su, or add "USER root" to your Dockerfile before running this script.'
+        exit 1
+    fi
+
+    # If we're using Alpine, install bash before executing
+    # . /etc/os-release
+    # if [ "${ID}" = "alpine" ]; then
+    #     apk add --no-cache bash
+    # fi
+
+    echo_status "installing packages..."
+    install_packages
+
+    echo_status "creating new sudo user..."
+    create_new_sudo_user
+
+    echo_status "installing docker..."
+    install_docker
+
+    # TODO: Interactively get user input for setting up user
+    # read -rp "${RED}Do you want to setup user?${ENDCOLOR}" -n 1;
+    # echo "";
+    # if [[ $REPLY =~ ^[Yy]$ ]]; then
+    #     _run "$1"
+    #     echo_status "setting up user..."
+    # fi;
+    echo_status "setting up user..."
+    setup_user
+
+    echo_status "getting updates and upgrading..."
+    apt-get update -y && apt-get upgrade -y
+
+    echo_status "cleaning..."
+    clean
+
+    echo_status "finished..."
+}
+
+# Run
+main "$@"
