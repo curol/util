@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+#**************************************
+# common
+#
+# Collection of common commands.
+#**************************************
+
+create_new_sudo_user() {
+    # Set vars
+    USERNAME=
+    USER_UID=
+    USER_GID=
+    USER_PASSWORD=
+
+    # Create group
+    groupadd --gid $USER_GID $USERNAME
+
+    # Create user
+    useradd -s /bin/zsh \
+        --uid $USER_UID \
+        --gid $USER_GID \
+        -p "$(openssl passwd -6 ${USER_PASSWORD})" \
+        -m $USERNAME
+
+    # Add user to group 'sudo'
+    usermod -aG sudo $USERNAME
+
+    # Add user to group 'docker'
+    usermod -aG docker $USERNAME
+
+    # Copy ssh
+    rsync --archive --chown=$USERNAME:$USERNAME ~/.ssh /home/$USERNAME >/dev/null 2>&1 || true
+
+    # Install dotfiles
+    local _tmp=/tmp/dotfiles
+    local _des=/home/$USERNAME/dotfiles
+    git clone https://github.com/curol/dotfiles $_tmp || true
+    rsync --archive --chown=$USERNAME:$USERNAME $_tmp/ $_des
+    su -l $USERNAME /bin/zsh -c "$_des/install.sh"
+}
+
+docker_add_user() {
+    # https://docs.docker.com/engine/install/linux-postinstall/
+    # Add user to group 'docker'
+    usermod -aG docker "$1"
+    # activate the changes to groups
+    newgrp docker
+
+    # https://www.digitalocean.com/community/questions/how-to-fix-docker-got-permission-denied-while-trying-to-connect-to-the-docker-daemon-socket
+    # If you still get errors, then run:
+    # sudo chmod 666 /var/run/docker.sock
+}
+
+ls_all_users() {
+    less /etc/passwd
+}
+
+ls_shell_processes_() {
+    # display the process for the current shell
+    # PID returns the unique process ID
+    # TTY returns the terminal type you're logged into
+    # TIME returns the total amount of CPU usage
+    # CMD returns the name of the command that launched the process.
+    ps
+}
+
+ls_all_processes() {
+    # To display all running processes for all users on your machine, including their usernames, and to show processes not attached to your terminal, you can use the command below:
+    # ps: is the process status command.
+    # a: displays information about other users' processes as well as your own.
+    # u: displays the processes belonging to the specified usernames.
+    # x: includes processes that do not have a controlling terminal.
+    ps aux
+}
+
+interactive_processes_view() {
+    htop
+}
+
+kill_process() {
+    # Kill process - kill [PID]
+    # Get process id - pgrep [NAME]
+    kill -9 "$1"
+}
+
+ls_all_groups() {
+    compgen -g
+}
+
+ls_all_group_members() {
+    cat /etc/group
+}
+
+get_group_members() {
+    getent group $1
+}
