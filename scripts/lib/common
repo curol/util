@@ -5,6 +5,47 @@
 # Collection of common commands.
 #**************************************
 
+#*******************************************
+# Users/Groups
+#*******************************************
+# List ids/gids of current user
+list_current_user_ids() {
+    id
+}
+
+# List ids/gids of a user
+list_user_ids() {
+    user="$1"
+
+    id "$user"
+}
+
+# Returns user's uid
+get_user_id() {
+    user="$1"
+
+    id -u "$user"
+}
+
+ls_all_users() {
+    less /etc/passwd
+}
+
+ls_all_groups() {
+    # compgen -g
+    cat /etc/group
+}
+
+# Get all members in group
+get_group_members() {
+    getent group $1
+}
+
+# Get all groups user belong to
+get_user_groups() {
+    groups $1
+}
+
 create_new_sudo_user() {
     # Set vars
     USERNAME=
@@ -39,22 +80,21 @@ create_new_sudo_user() {
     su -l $USERNAME /bin/zsh -c "$_des/install.sh"
 }
 
-docker_add_user() {
+add_user_to_docker_group() {
     # https://docs.docker.com/engine/install/linux-postinstall/
     # Add user to group 'docker'
     usermod -aG docker "$1"
     # activate the changes to groups
     newgrp docker
 
-    # https://www.digitalocean.com/community/questions/how-to-fix-docker-got-permission-denied-while-trying-to-connect-to-the-docker-daemon-socket
-    # If you still get errors, then run:
+    # NOTE - If you still get errors then permissions for /var/run/docker.sock could be incorrect, per https://www.digitalocean.com/community/questions/how-to-fix-docker-got-permission-denied-while-trying-to-connect-to-the-docker-daemon-socket
+    # Set correct permissions for docker.sock
     # sudo chmod 666 /var/run/docker.sock
 }
 
-ls_all_users() {
-    less /etc/passwd
-}
-
+#*******************************************
+# Processes
+#*******************************************
 ls_shell_processes_() {
     # display the process for the current shell
     # PID returns the unique process ID
@@ -79,18 +119,58 @@ interactive_processes_view() {
 
 kill_process() {
     # Kill process - kill [PID]
-    # Get process id - pgrep [NAME]
     kill -9 "$1"
 }
 
-ls_all_groups() {
-    compgen -g
+get_process_id() {
+    # Get process id - pgrep [NAME]
+    pgrep "$1"
 }
 
-ls_all_group_members() {
-    cat /etc/group
+#*******************************************
+# Helpers
+#*******************************************
+create_xdg_directories_if_dont_exist() {
+    XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+    XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+    XDG_BIN_HOME="${XDG_BIN_HOME:-$HOME/.local/bin}"
+    XDG_FONTS_DIR="${XDG_FONTS_DIR:-$HOME/.local/share/fonts}"
+
+    mkdir -p XDG_BIN_HOME XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_FONTS_DIR
 }
 
-get_group_members() {
-    getent group $1
+check_if_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo -e 'Script must be run as root. Use sudo, su, or add "USER root" to your Dockerfile before running this script.'
+        exit 1
+    fi
+}
+
+get_os_type() {
+    # if [[ $OSTYPE == 'darwin'* ]]; then
+    #     echo "mac"
+    # else
+    #     echo "other"
+    # fi
+    case "$OSTYPE" in
+    solaris*) echo "SOLARIS" ;;
+    darwin*) echo "OSX" ;;
+    linux*) echo "LINUX" ;;
+    bsd*) echo "BSD" ;;
+    msys*) echo "WINDOWS" ;;
+    cygwin*) echo "WINDOWS" ;;
+    *) echo "unknown: $OSTYPE" ;;
+    esac
+}
+
+get_path_to_this_script() {
+    local basedir
+    basedir=$(dirname "$0")
+
+    echo "$basedir"
+}
+
+test_echo_env() {
+    echo "echo "$A" "$B" "$C""
 }

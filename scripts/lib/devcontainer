@@ -1,11 +1,13 @@
-#!/bin/bash
-# ***********************************************
+#!/usr/bin/env bash
+#**************************************
 # devcontainer
-# ***********************************************
+#
+# Devcontainer library.
+#**************************************
 
 set -e
 
-_get_img_name(){
+_get_img_name() {
     local _version=latest
     local _repo=ghcr.io/curol/devcontainers
     local _dir=$(pwd)
@@ -15,39 +17,39 @@ _get_img_name(){
 }
 
 # login
-login(){
-    # docker login ghcr.io -u <GITHUB_USERNAME> -p <GITHUB_ACCESS_TOKEN> 
+login() {
+    # docker login ghcr.io -u <GITHUB_USERNAME> -p <GITHUB_ACCESS_TOKEN>
     # Or,
     # echo <GIT_TOKEN> | docker login ghcr.io -u <GIT_USERNAME> --password-stdin
     docker login ghcr.io -u "$1" -p "$2"
 }
 
 # Build image
-build(){
+build() {
     local _img_name
-    _img_name=$( _get_img_name )
+    _img_name=$(_get_img_name)
 
     echo "building image ${_img_name}"
     echo "..."
     npx devcontainer build \
-    --no-cache \
-    --image-name "$_img_name" \
-    --workspace-folder .
+        --no-cache \
+        --image-name "$_img_name" \
+        --workspace-folder .
 }
 
 # Publish image with name set as basename of directory
-publish(){
+publish() {
     local _img_name
-    _img_name=$( _get_img_name )
+    _img_name=$(_get_img_name)
 
     echo "Publishing image to ${_img_name}"
     echo "..."
     docker push "$_img_name"
 }
 
-build_and_publish(){
+build_and_publish() {
     local img_name
-    img_name=$( _get_img_name )
+    img_name=$(_get_img_name)
 
     build
 
