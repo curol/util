@@ -80,6 +80,12 @@ create_new_sudo_user() {
     su -l $USERNAME /bin/zsh -c "$_des/install.sh"
 }
 
+remove_user() {
+    _user=$1
+
+    userdel -f -r "$_user"
+}
+
 add_user_to_docker_group() {
     # https://docs.docker.com/engine/install/linux-postinstall/
     # Add user to group 'docker'

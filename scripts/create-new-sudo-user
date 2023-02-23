@@ -1,0 +1,46 @@
+#!/bin/bash
+#***************************************************************
+# create-new-sudo-user
+#
+# Create a new sudo user and bootstrap settings and dotfiles.
+# Run as root.
+#
+# I.g., create new user with username, uid, gid, and password:
+# ./create-new-sudo-user myusername myuid mygid mypassword
+#***************************************************************
+
+set -e
+
+create_new_sudo_user() {
+    # Set vars
+    USERNAME=$1
+    USER_UID=$2
+    USER_GID=$3
+    USER_PASSWORD=$4
+
+    # Create group
+    groupadd --gid "$USER_GID" "$USERNAME"
+
+    # Create user
+    useradd -s /bin/zsh \
+        --uid "$USER_UID" \
+        --gid "$USER_GID" \
+        -p "$(openssl passwd -6 "${USER_PASSWORD}")" \
+        -m "$USERNAME"
+
+    # Add user to group 'sudo'
+    usermod -aG sudo "$USERNAME"
+
+    # Add user to group 'docker'
+    usermod -aG docker "$USERNAME"
+
+    # Copy root's ssh to user
+    rsync --archive --chown="$USERNAME":"$USERNAME" ~/.ssh/ /home/"$USERNAME"/.ssh/
+
+    # Install dotfiles
+    local _dotfiles=https://github.com/curol/dotfiles
+    su -l "$USERNAME" /bin/zsh -c "git clone $_dotfiles"
+    su -l "$USERNAME" /bin/zsh -c "dotfiles/install.sh"
+}
+
+create_new_sudo_user "$@"
