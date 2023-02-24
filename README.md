@@ -2,4 +2,4 @@
 
 **UNDER CONSTRUCTION**
 
-Opinionated, experimental scripts.
+Opinionated, experimental utility scripts for dev environments.
