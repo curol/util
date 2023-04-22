@@ -22,3 +22,16 @@ alias tree-repo="tree -a -C -I '.git|README.md' --filesfirst"
 
 # Generate random password
 alias randpwd="openssl rand -base64 16"
+
+# Get architecture (uname)
+alias get-arch="uname -m"
+
+# Print Kernel architecture (dpkg)
+alias dpkg-arch="dpkg --print-architecture"
+
+# Get kernel version
+alias get-kernel="uname -r"
+
+# Get OS
+alias get-os="uname -o"
+
