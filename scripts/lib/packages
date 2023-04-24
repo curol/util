@@ -216,3 +216,19 @@ install_node_and_enable_corepack_and_pnpm() {
     su -l "$_username" -c "corepack prepare pnpm@$PNPM_VER --activate"
     su -l "$_username" -c 'pnpm setup'
 }
+
+install_pscale() {
+    # local _username=$1
+
+    # su -l "$_username" -c "corepack prepare pscale --activate"
+
+    # Install dependencies
+    sudo apt-get install default-mysql-client
+
+    # Install pscale cli
+    _pscale_dir="$HOME/.local/share/pscale"
+    mkdir "$_pscale_dir"
+    cd "$_pscale_dir" || echo "pscale directory not found." && exit 1
+    wget https://github.com/planetscale/cli/releases/download/v0.138.0/pscale_0.138.0_linux_amd64.deb
+    sudo dpkg -i pscale_0.138.0_linux_amd64.deb
+}

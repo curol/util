@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:latest
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password1234
+      MYSQL_DATABASE: nextauth
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password1234
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_volume:/var/lib/mysql
+    networks:
+      - mysql-network
+
+networks:
+  mysql-network:
+    external: false
+    # name: 
+
+volumes:
+  mysql_volume:
